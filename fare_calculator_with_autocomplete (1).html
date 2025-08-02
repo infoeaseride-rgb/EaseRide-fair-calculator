@@ -1,0 +1,152 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>RideEase Fare Calculator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 600px;
+            margin: auto;
+        }
+        input, select, button {
+            width: 100%;
+            padding: 10px;
+            margin: 8px 0;
+        }
+        #result {
+            margin-top: 20px;
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+        #map {
+            height: 0px;
+            visibility: hidden;
+        }
+    </style>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+</head>
+<body>
+
+<h2>RideEase Sri Lanka - Fare Calculator</h2>
+
+<label for="pickup">Pickup Location:</label>
+<input type="text" id="pickup" placeholder="Enter pickup location">
+
+<label for="drop">Drop Location:</label>
+<input type="text" id="drop" placeholder="Enter drop location">
+
+<label for="vehicle">Select Vehicle Type:</label>
+<select id="vehicle">
+    <option value="mini">Mini</option>
+    <option value="sedan">Sedan</option>
+    <option value="van">Van</option>
+    <option value="suv">SUV</option>
+    <option value="tuk">Tuk Tuk</option>
+</select>
+
+<label for="hourly">Hourly Booking (optional):</label>
+<select id="hourly">
+    <option value="no">No</option>
+    <option value="1">1 Hour</option>
+    <option value="2">2 Hours</option>
+    <option value="3">3 Hours</option>
+</select>
+
+<button onclick="calculateFare()">Calculate Fare</button>
+
+<div id="result"></div>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+
+<script>
+    let map = L.map('map').setView([7.8731, 80.7718], 7);  // Sri Lanka coordinates
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+    const pickupInput = document.getElementById("pickup");
+    const dropInput = document.getElementById("drop");
+
+    function addGeocoder(input) {
+        const container = L.DomUtil.create("div", "geocoder-control");
+        const control = L.Control.geocoder({
+            defaultMarkGeocode: false
+        }).addTo(map);
+        control.on("markgeocode", function(e) {
+            input.value = e.geocode.name;
+        });
+
+        input.addEventListener("focus", () => {
+            control._geocoderContainer.style.display = "block";
+        });
+    }
+
+    addGeocoder(pickupInput);
+    addGeocoder(dropInput);
+
+    function getCoords(address, callback) {
+        fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data && data.length > 0) {
+                    callback([parseFloat(data[0].lat), parseFloat(data[0].lon)]);
+                } else {
+                    callback(null);
+                }
+            });
+    }
+
+    function haversineDistance(coords1, coords2) {
+        const R = 6371; // Radius of Earth in km
+        const dLat = (coords2[0] - coords1[0]) * Math.PI / 180;
+        const dLon = (coords2[1] - coords1[1]) * Math.PI / 180;
+        const lat1 = coords1[0] * Math.PI / 180;
+        const lat2 = coords2[0] * Math.PI / 180;
+
+        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                  Math.sin(dLon/2) * Math.sin(dLon/2) * Math.cos(lat1) * Math.cos(lat2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        return R * c; // in km
+    }
+
+    function calculateFare() {
+        const vehicle = document.getElementById("vehicle").value;
+        const hourly = parseInt(document.getElementById("hourly").value || "0");
+
+        const rates = {
+            mini: 30,
+            sedan: 35,
+            van: 40,
+            suv: 50,
+            tuk: 25
+        };
+
+        getCoords(pickupInput.value, pickupCoords => {
+            if (!pickupCoords) return alert("Invalid pickup address");
+
+            getCoords(dropInput.value, dropCoords => {
+                if (!dropCoords) return alert("Invalid drop address");
+
+                const distance = haversineDistance(pickupCoords, dropCoords);
+                const baseFare = 5; // km
+                const baseRate = 100; // base rate for first 5 km
+                const perKmRate = rates[vehicle];
+
+                let fare = distance <= baseFare ? baseRate : baseRate + ((distance - baseFare) * perKmRate);
+                if (hourly > 0) {
+                    fare += hourly * 300;
+                }
+
+                document.getElementById("result").innerText = `Estimated Fare: LKR ${fare.toFixed(2)} (Distance: ${distance.toFixed(2)} km)`;
+            });
+        });
+    }
+</script>
+
+</body>
+</html>
